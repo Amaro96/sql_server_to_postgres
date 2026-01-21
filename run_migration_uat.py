@@ -34,7 +34,7 @@ load_dotenv()
 
 # %%
 sql_host = os.getenv("SQL_SERVER_HOST")
-sql_db = os.getenv("SQL_SERVER_DB")
+sql_db   = os.getenv("SQL_SERVER_DB")
 
 # %%
 print(f"SQL SERVER HOST: {sql_host}")
@@ -52,13 +52,10 @@ print(f"POSTGRES HOST: {pg_host}")
 print(f"POSTGRES PORT: {pg_port}")
 print(f"POSTGRES DB: {pg_db}")
 print(f"POSTGRES USER: {pg_user}")
-print(f"POSTGRES USER: {pg_password}")
+print(f"POSTGRES PASSWORD: {pg_password}")
 
 # %% [markdown]
 # ## Connect to SQL Server
-
-# %% [markdown]
-#
 
 # %%
 print("Connecting to SQL Server")
@@ -117,7 +114,7 @@ except psycopg2.OperationalError as e:
                > 1. Check Postgres is running
                > 2. Verify username + password
                > 3. Check database exists
-""")
+            """)
 
 except Exception as e:
      print("Unexpected error: {e}")
@@ -150,12 +147,12 @@ print(f"\nTotal  no of tables to migrate: {total_no_tbls}")
 #
 
 # %%
-print("=" * 70)
+print("=" * 60)
 print(">>> ROW COUNTS")
-print("=" * 70)
+print("=" * 60)
 
 # %%
-test_query = "SELECT COUNT(*) AS total_rows FROM Categories"
+test_query = "SELECT COUNT(*) AS total_rows FROM Products"
 sql_cursor.execute(test_query)
 
 count = sql_cursor.fetchone()[0]
@@ -206,16 +203,82 @@ try:
         """)
     null_names = sql_cursor.fetchone()[0]
     if null_names > 0:
-        quality_issues.append(f"  - {null_names:,} customers with Null names...")
-    #print(quality_issues)
-
+        quality_issues.append(f" > {null_names:,} customers with Null names...")
+    print(quality_issues)
 
     print("\nCHECK 3: Invalid email formats")
     sql_cursor.execute(""" SELECT COUNT(*) AS invalid_email_count FROM Customers WHERE email LIKE '@Invalid' """)
     invalid_emails = sql_cursor.fetchone()[0]
     if invalid_emails > 0:
-        quality_issues.append(f"  - {invalid_emails:,} emails with invalid email formats...")
+        quality_issues.append(f" > {invalid_emails:,} emails with invalid email formats...")
     print(quality_issues)
 
+    print("\nCHECK 4: NEGATIVE PRODUCTS PRICES")
+    sql_cursor.execute(""" SELECT COUNT(*) As negative_product_prices_count FROM Products WHERE UnitPrice < 0 """)
+    negative_price = sql_cursor.fetchone()[0]
+    if negative_price > 0:
+        quality_issues.append(f" > {negative_price:,} prices contain negative prices...")
+    print(quality_issues)
+
+    print("\nCHECK 4: NEGATIVE STOCK QUANTITIES")
+    sql_cursor.execute("""
+                        SELECT COUNT(*) As negative_stock_quantities_count
+                       FROM Products
+                       WHERE StockQuantity < 0
+                        """)
+    negative_stock_quantities = sql_cursor.fetchone()[0]
+    if negative_stock_quantities > 0:
+        quality_issues.append(f" > {negative_stock_quantities:,} products contain negative values...")
+    print(quality_issues)
+
+    print("\nCHECK 6: ORPHANED FOREIGN KEYS")
+    sql_cursor.execute("""SELECT COUNT(*) AS orphaned_records FROM Products  prod
+                        WHERE NOT EXISTS (SELECT 1 FROM Suppliers sup
+                        WHERE sup.SupplierID = prod.SupplierID)
+                        """)
+    orphaned_fks = sql_cursor.fetchone()[0]
+    if orphaned_fks > 0:
+        quality_issues.append(f" > {orphaned_fks:,} products with orphaned foreign keys...")
+    print(quality_issues)
+
+    if quality_issues:
+         for issue in quality_issues:
+              print(issue)
+    else:
+         print("No data quality issues identified")
+
+except Exception as e:
+        print(f"Error ==>> Unexpected issue {e}")
+        raise
+
+# %% [markdown]
+# ### 6. Get table schema
+
+# %%
+print("="*65)
+print("ANALYSE TABLE SCHEMA")
+print("="*65)
+
+# %%
+table_shema = {}
+
+try:
+    for table in tables_to_migrate:
+        schema_query = f"""SELECT
+                        COLUMN_NAME,
+                        DATA_TYPE,
+                        CHARACTER_MAXIMUM_LENGTH,
+                        IS_NULLABLE
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = ?
+                        ORDER BY ORDINAL_POSITION
+                        """
+        schema_df = pd.read_sql(schema_query,sql_conn,params=(table,))
+        table_shema[table] = schema_df
+        print(f"="*65)
+        print(f"{table:<12}")
+        print(f"\n{schema_df}")
 except Exception as e:
     pass
+
+
