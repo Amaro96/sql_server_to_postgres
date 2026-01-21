@@ -270,11 +270,11 @@ try:
                         CHARACTER_MAXIMUM_LENGTH,
                         IS_NULLABLE
                         FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_NAME = 'Customers'
+                        WHERE TABLE_NAME = ?
                         ORDER BY ORDINAL_POSITION
                         """
-       # schema_df = pd.read_sql(schema_query,sql_conn,params=(table,))
-        schema_df = pd.read_sql(schema_query,sql_conn)
+        schema_df = pd.read_sql(schema_query,sql_conn,params=(table,))
+        #schema_df = pd.read_sql(schema_query,sql_conn)
         table_shema[table] = schema_df
         print(f"="*65)
         print(f"{table:<12}")
