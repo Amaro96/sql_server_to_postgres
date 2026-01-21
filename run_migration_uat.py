@@ -270,10 +270,11 @@ try:
                         CHARACTER_MAXIMUM_LENGTH,
                         IS_NULLABLE
                         FROM INFORMATION_SCHEMA.COLUMNS
-                        WHERE TABLE_NAME = ?
+                        WHERE TABLE_NAME = 'Customers'
                         ORDER BY ORDINAL_POSITION
                         """
-        schema_df = pd.read_sql(schema_query,sql_conn,params=(table,))
+       # schema_df = pd.read_sql(schema_query,sql_conn,params=(table,))
+        schema_df = pd.read_sql(schema_query,sql_conn)
         table_shema[table] = schema_df
         print(f"="*65)
         print(f"{table:<12}")
@@ -282,3 +283,78 @@ except Exception as e:
     pass
 
 
+
+# %% [markdown]
+# ### 7. Define data type mapping
+
+# %%
+type_mapping = {
+'int': 'INTEGER',
+'bigint': 'BIGINT',
+'smallint': 'SMALLINT',
+'tinyint': 'SMALLINT',
+'bit': 'BOOLEAN',
+'decimal': 'NUMERIC',
+'numeric': 'NUMERIC',
+'money': 'NUMERIC(19,4)',
+'smallmoney': 'NUMERIC(10,4)',
+'float': 'DOUBLE PRECISION',
+'real': 'REAL',
+'datetime': 'TIMESTAMP',
+'datetime2': 'TIMESTAMP',
+'smalldatetime': 'TIMESTAMP',
+'date': 'DATE',
+'time': 'TIME',
+'char': 'CHAR',
+'varchar': 'VARCHAR',
+'nchar': 'CHAR',
+'nvarchar': 'VARCHAR',
+'text': 'TEXT',
+'ntext': 'TEXT'
+
+}
+
+# %%
+print("SQL to PostgreSQL type mapping")
+print()
+
+for sql_type,pg_type in list(type_mapping.items()):
+    print(f"  {sql_type:15} --->    {pg_type}")
+
+# %%
+print("="*65)
+print("CREATE TABLES IN POSTGRES")
+print("="*65)
+
+# %%
+try:
+    for table in tables_to_migrate:
+        schema = table_shema[table]
+        pg_table = table.lower()
+
+        pg_cursor.execute(f"DROP TABLE IF EXISTS {pg_table} CASCADE")
+        column_definitions = []
+
+        for idx,row in schema.iterrows():
+            col_name = row['COLUMN_NAME'].lower()
+            sql_type = row['DATA_TYPE']
+
+            base_type = sql_type.lower()
+            pg_type = type_mapping.get(base_type, 'TEXT')
+
+            if idx == 0 and col_name.endswith('id')  and 'int' in sql_type.lower():
+                column_definitions.append(f"{col_name} SERIAL PRIMARY KEY")
+            else:
+                column_definitions.append(f"{col_name} {pg_type}")
+
+        column_string = ",\n        ".join(column_definitions)
+        create_query = f"""
+                        CREATE TABLE {pg_table} ({column_string})
+                        """
+        print(column_string)
+        pg_cursor.execute(create_query)
+        pg_conn.commit()
+    print("\n + " + "="*55)
+    print("[SUCCESS] ---> All tables created successfully!")
+except Exception as e:
+    print(f"Unexpected issue: {e}")
