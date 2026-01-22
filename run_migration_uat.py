@@ -356,5 +356,103 @@ try:
         pg_conn.commit()
     print("\n + " + "="*55)
     print("[SUCCESS] ---> All tables created successfully!")
+
+except psycopg2.Error as e:
+    print(f"Postgres experienced an error while creating a table: {e}")
+    pg_conn.rollback()
+    raise
+
 except Exception as e:
     print(f"Unexpected issue: {e}")
+
+# %% [markdown]
+# # 9. Test Migration with one table
+
+# %%
+print("="*65)
+print("TESTING MIGRATION (SINGLE TABLE)")
+print("="*65)
+
+# %%
+test_table = 'Customers'
+pg_table = test_table.lower()
+
+# %%
+try:
+    print("1. Read from SQL Server...")
+    extract_query = f"SELECT * FROM {pg_table}"
+    test_df = pd.read_sql(extract_query,sql_conn)
+
+    print("2.  Transforming data types...")
+
+    if 'IsActive' in test_df.columns:
+        test_df['IsActive'] = test_df['IsActive'].astype('bool')
+        print("[SUCCESS] --->> Converted IsActive: BIT ---> BOOLEAN")
+
+        print("3. Prepare the data for loading")
+        data_tuples =[tuple(row) for row in test_df.to_numpy()]
+        columns = [col.lower() for col in test_df.columns]
+
+        column_string = ', '.join(columns)
+        placeholders = ', '.join(['%'] * len(columns))
+
+        insert_query = f"""
+                        INSERT INTO {pg_table} ({column_string})
+                        VALUES %s
+                        """
+        print(f"  Prepared {len(data_tuples):,} rows")
+        print("4. Insert data into PostgresSQL...")
+        execute_values(pg_cursor,insert_query,data_tuples,page_size=1000)
+        pg_conn.commit()
+
+        print(f"Loaded {len(data_tuples):,} rows")
+
+        print("5.  Verifying...")
+        pg_cursor.execute(f"SELECT COUNT(*) AS total_rows FROM {pg_table}")
+        pg_count =pg_cursor.fetchone()[0]
+
+        sql_count = baseline_counts[test_table]
+
+        if pg_count == sql_count:
+            print(f"[SUCCESS] --> Verification passed: {pg_count:,} == {sql_count:,}")
+        else:
+            print(f"[FAILED] --> Count mismatch: {pg_count:,} != {sql_count:,}")
+
+        print(f"\n {test_table} migration test successfully completed!")
+
+
+
+except Exception as e:
+    pg_conn.rollback()
+    raise
+
+
+# %% [markdown]
+# # 10. Migrate remaining tables
+
+# %%
+print("="* 65)
+print("MIGRATE REMAINING TABLES")
+print("="* 65)
+
+# %%
+remaining_tables = [t for t in tables_to_migrate if t != 'Customers']
+
+for table in remaining_tables:
+    pg_table = table.lower()
+
+    print(f"Migrating {table} --> {pg_table}...")
+
+    try:
+        print("1. Reading from SQL Server...")
+        extract_query = f"SLEECT * FROM {table}"
+        sql_df = pd.read_sql(extract_query,sql_conn)
+        print(f"  Read {len(sql_df):,} rows \n\n")
+
+        print("2.  Preparing data...")
+        data_tuples = [tuple(row) for row in sql_df.to_numpy()]
+        columns = [col.lower() for col in sql_df.columns]
+        columns_string = ', '.join(columns)
+
+    except Exception as e:
+        pass
